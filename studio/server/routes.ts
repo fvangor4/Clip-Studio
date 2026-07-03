@@ -56,8 +56,20 @@ function serializeClip(clip: Clip) {
 export function registerRoutes(
   app: FastifyInstance,
   db: Db,
-  queue: Queue<Clip> = createQueue((clip) => transcribeClip(db, clip)),
+  worker: (clipId: number) => Promise<void> = (clipId) =>
+    transcribeClip(db, clipId),
 ): void {
+  // Ids queued or currently running, to close the double-enqueue window
+  // before the worker flips the clip's status to 'transcribing'.
+  const queuedIds = new Set<number>();
+  const queue: Queue<number> = createQueue(async (clipId) => {
+    try {
+      await worker(clipId);
+    } finally {
+      queuedIds.delete(clipId);
+    }
+  });
+
   app.get("/api/clips", async () => db.listClips().map(serializeClip));
 
   app.post("/api/scan", async () => scanRecordings(db, recordingsDir()));
@@ -66,8 +78,11 @@ export function registerRoutes(
     let queued = 0;
     for (const id of ids) {
       const clip = db.getClip(id);
-      if (!clip || clip.status === "transcribing") continue;
-      queue.enqueue(clip);
+      if (!clip || clip.status === "transcribing" || queuedIds.has(id)) {
+        continue;
+      }
+      queuedIds.add(id);
+      queue.enqueue(id);
       queued++;
     }
     return queued;

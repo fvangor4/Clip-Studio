@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { createQueue, containerPath } from "./jobs.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { createQueue, containerPath, transcribeClip } from "./jobs.js";
+import { createDb } from "./db.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -76,6 +77,66 @@ describe("createQueue", () => {
     queue.enqueue(1);
     await queue.onIdle();
     expect(ran).toEqual([1, 2]);
+  });
+});
+
+describe("transcribeClip", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("re-fetches the clip so settings patched while queued are kept", async () => {
+    const db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4", width: 3840, height: 1080 });
+    // Simulate a PATCH landing after enqueue but before the worker runs.
+    const patched = JSON.stringify({ styleId: "custom", captionY: 500 });
+    db.updateClip(1, { settings_json: patched });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              words: [{ text: "hi", start: 0, end: 0.4, confidence: 0.95 }],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+
+    await transcribeClip(db, 1);
+
+    const clip = db.getClip(1)!;
+    expect(clip.status).toBe("review");
+    expect(JSON.parse(clip.transcript_json!)).toHaveLength(1);
+    expect(clip.settings_json).toBe(patched); // not clobbered by defaults
+    db.close();
+  });
+
+  it("applies default settings when none exist", async () => {
+    const db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4", width: 3840, height: 1080 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response(JSON.stringify({ words: [] }), { status: 200 }),
+      ),
+    );
+
+    await transcribeClip(db, 1);
+
+    const settings = JSON.parse(db.getClip(1)!.settings_json!);
+    expect(settings.styleId).toBe("karaokeHighlight");
+    expect(settings.webcamCrop).toEqual({ x: 420, y: 0, w: 1080, h: 640 });
+    db.close();
+  });
+
+  it("is a no-op for a clip deleted while queued", async () => {
+    const db = createDb(":memory:");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    await expect(transcribeClip(db, 42)).resolves.toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    db.close();
   });
 });
 

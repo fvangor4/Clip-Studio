@@ -97,19 +97,29 @@ function defaultSettings(db: Db, clip: Clip): Record<string, unknown> {
     settings.gameplayCrop = { x: 2526, y: 0, w: 608, h: 1080 } satisfies CropRect;
   } else if (layout === "single") {
     settings.gameplayCrop = { x: 656, y: 0, w: 608, h: 1080 } satisfies CropRect;
+    let webcamCrop: CropRect = { x: 0, y: 0, w: 480, h: 270 };
     const webcamRegion = db.getPreset("webcamRegion");
-    settings.webcamCrop = webcamRegion
-      ? (JSON.parse(webcamRegion) as CropRect)
-      : ({ x: 0, y: 0, w: 480, h: 270 } satisfies CropRect);
+    if (webcamRegion) {
+      try {
+        webcamCrop = JSON.parse(webcamRegion) as CropRect;
+      } catch {
+        // malformed preset: keep the default rect
+      }
+    }
+    settings.webcamCrop = webcamCrop;
   }
   return settings;
 }
 
 /**
- * Transcribe one clip via the whisper-api container. Never throws: all
- * failures are recorded on the clip row as status 'error' (or 'no_speech').
+ * Transcribe one clip via the whisper-api container. Takes the clip id and
+ * re-fetches the row so edits made while the job sat in the queue are not
+ * lost. Never throws: all failures are recorded on the clip row as status
+ * 'error' (or 'no_speech').
  */
-export async function transcribeClip(db: Db, clip: Clip): Promise<void> {
+export async function transcribeClip(db: Db, clipId: number): Promise<void> {
+  const clip = db.getClip(clipId);
+  if (!clip) return; // deleted while queued
   try {
     db.updateClip(clip.id, { status: "transcribing", error: null });
 
@@ -129,7 +139,10 @@ export async function transcribeClip(db: Db, clip: Clip): Promise<void> {
         status: "review",
         transcript_json: JSON.stringify(data.words),
       };
-      if (!clip.settings_json) {
+      // Re-check on the freshest row: a PATCH may have landed while the
+      // transcription request was in flight.
+      const fresh = db.getClip(clip.id) ?? clip;
+      if (!fresh.settings_json) {
         fields.settings_json = JSON.stringify(defaultSettings(db, clip));
       }
       db.updateClip(clip.id, fields);
