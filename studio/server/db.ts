@@ -16,6 +16,7 @@ export interface Clip {
   width: number | null;
   height: number | null;
   duration: number | null;
+  mtime: number | null;
   status: ClipStatus;
   error: string | null;
   transcript_json: string | null;
@@ -27,6 +28,8 @@ export interface UpsertClipInput {
   width?: number | null;
   height?: number | null;
   duration?: number | null;
+  /** File modification time, unix ms. */
+  mtime?: number | null;
 }
 
 export type UpdateClipFields = Partial<
@@ -40,6 +43,7 @@ CREATE TABLE IF NOT EXISTS clips(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   path TEXT UNIQUE NOT NULL,
   width INTEGER, height INTEGER, duration REAL,
+  mtime REAL,
   status TEXT NOT NULL DEFAULT 'new',
   error TEXT,
   transcript_json TEXT,
@@ -57,13 +61,23 @@ export function createDb(path: string) {
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
 
+  // Idempotent migration for databases created before the mtime column existed.
+  const clipColumns = db
+    .pragma("table_info(clips)") as { name: string }[];
+  if (!clipColumns.some((c) => c.name === "mtime")) {
+    db.exec("ALTER TABLE clips ADD COLUMN mtime REAL");
+  }
+
   const upsertStmt = db.prepare(`
-    INSERT INTO clips(path, width, height, duration) VALUES (@path, @width, @height, @duration)
+    INSERT INTO clips(path, width, height, duration, mtime)
+    VALUES (@path, @width, @height, @duration, @mtime)
     ON CONFLICT(path) DO UPDATE SET
       width = excluded.width,
       height = excluded.height,
-      duration = excluded.duration
+      duration = excluded.duration,
+      mtime = excluded.mtime
   `);
+  const setMtimeStmt = db.prepare("UPDATE clips SET mtime = ? WHERE path = ?");
   const listStmt = db.prepare("SELECT * FROM clips ORDER BY id");
   const getStmt = db.prepare("SELECT * FROM clips WHERE id = ?");
   const getPresetStmt = db.prepare("SELECT json FROM presets WHERE name = ?");
@@ -79,7 +93,13 @@ export function createDb(path: string) {
         width: input.width ?? null,
         height: input.height ?? null,
         duration: input.duration ?? null,
+        mtime: input.mtime ?? null,
       });
+    },
+
+    /** Backfill helper: set mtime for an already-known path without touching probe metadata. */
+    setClipMtime(path: string, mtime: number): void {
+      setMtimeStmt.run(mtime, path);
     },
 
     listClips(): Clip[] {

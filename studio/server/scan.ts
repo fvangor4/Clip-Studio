@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { probeFile } from "./ffmpeg.js";
 import type { Db } from "./db.js";
@@ -39,15 +39,26 @@ export async function scanRecordings(db: Db, dir: string): Promise<ScanResult> {
   const files: string[] = [];
   await walk(path.resolve(dir), files);
 
-  const known = new Set(db.listClips().map((c) => c.path));
+  const known = new Map(db.listClips().map((c) => [c.path, c]));
   const errors: ScanResult["errors"] = [];
   let added = 0;
 
   for (const file of files) {
-    if (known.has(file)) continue;
+    const existing = known.get(file);
     try {
-      const { width, height, duration } = await probeFile(file);
-      db.upsertClip({ path: file, width, height, duration });
+      if (existing) {
+        // Known file: keep the skip-re-probe behavior, but backfill mtime for
+        // rows created before the column existed (cheap stat, no ffprobe).
+        if (existing.mtime === null) {
+          db.setClipMtime(file, (await stat(file)).mtimeMs);
+        }
+        continue;
+      }
+      const [{ width, height, duration }, fileStat] = await Promise.all([
+        probeFile(file),
+        stat(file),
+      ]);
+      db.upsertClip({ path: file, width, height, duration, mtime: fileStat.mtimeMs });
       added++;
     } catch (err) {
       errors.push({

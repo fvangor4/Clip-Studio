@@ -64,6 +64,15 @@ table.clips td {
   border-bottom: 1px solid #2a2e37;
 }
 
+table.clips th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+table.clips th.sortable:hover {
+  color: #e6e9ef;
+}
+
 table.clips tbody tr {
   cursor: pointer;
 }

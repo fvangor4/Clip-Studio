@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Clip, type Jobs } from "../api";
+import { basename, sortClips, type SortDir, type SortKey } from "../sortClips";
 
-function basename(path: string): string {
-  return path.split(/[\\/]/).pop() ?? path;
+const dateFormat = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+function formatDate(mtime: number | null): string {
+  return mtime === null ? "–" : dateFormat.format(new Date(mtime));
 }
 
 function formatDuration(seconds: number | null): string {
@@ -28,6 +36,10 @@ export function BatchScreen() {
   const [error, setError] = useState<string | null>(null);
   const [whisperWarning, setWhisperWarning] = useState<string | null>(null);
   const [warningDismissed, setWarningDismissed] = useState(false);
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({
+    key: "date",
+    dir: "desc",
+  });
   const [vocab, setVocab] = useState("");
   const [vocabSaved, setVocabSaved] = useState(false);
 
@@ -147,6 +159,22 @@ export function BatchScreen() {
   const readyIds = clips.filter((c) => c.status === "ready").map((c) => c.id);
   const renderProgress = jobs?.render.progress ?? {};
 
+  const sortedClips = useMemo(
+    () => sortClips(clips, sort.key, sort.dir),
+    [clips, sort],
+  );
+
+  const toggleSort = (key: SortKey) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: key === "date" ? "desc" : "asc" },
+    );
+  };
+
+  const sortIndicator = (key: SortKey) =>
+    sort.key === key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
+
   return (
     <div className="page">
       <header className="toolbar">
@@ -212,14 +240,39 @@ export function BatchScreen() {
                 aria-label="Select all"
               />
             </th>
-            <th>File</th>
+            <th
+              className="sortable"
+              onClick={() => toggleSort("name")}
+              aria-sort={
+                sort.key === "name"
+                  ? sort.dir === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : undefined
+              }
+            >
+              File{sortIndicator("name")}
+            </th>
+            <th
+              className="sortable"
+              onClick={() => toggleSort("date")}
+              aria-sort={
+                sort.key === "date"
+                  ? sort.dir === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : undefined
+              }
+            >
+              Date{sortIndicator("date")}
+            </th>
             <th>Duration</th>
             <th>Resolution</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody>
-          {clips.map((clip) => (
+          {sortedClips.map((clip) => (
             <tr key={clip.id} onClick={() => navigate(`/review/${clip.id}`)}>
               <td onClick={(e) => e.stopPropagation()}>
                 <input
@@ -230,6 +283,7 @@ export function BatchScreen() {
                 />
               </td>
               <td className="filename">{basename(clip.path)}</td>
+              <td className="muted">{formatDate(clip.mtime)}</td>
               <td>{formatDuration(clip.duration)}</td>
               <td>
                 <span className="badge">{resolutionLabel(clip)}</span>
@@ -263,7 +317,7 @@ export function BatchScreen() {
           ))}
           {clips.length === 0 && (
             <tr>
-              <td colSpan={5} className="muted empty">
+              <td colSpan={6} className="muted empty">
                 No clips. Scan the recordings folder to get started.
               </td>
             </tr>

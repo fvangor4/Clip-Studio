@@ -21,6 +21,8 @@ export interface Clip {
   width: number | null;
   height: number | null;
   duration: number | null;
+  /** File modification time, unix ms; null for rows scanned before mtime tracking. */
+  mtime: number | null;
   status: ClipStatus;
   error: string | null;
   transcript: TranscriptWord[] | null;

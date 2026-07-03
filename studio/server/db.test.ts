@@ -1,4 +1,8 @@
 import { test, expect } from "vitest";
+import Database from "better-sqlite3";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createDb } from "./db";
 
 test("upsertClip is idempotent by path", () => {
@@ -47,6 +51,59 @@ test("upsert of existing path does not reset status", () => {
   db.upsertClip({ path: "/a.mp4", width: 1920, height: 1080, duration: 10 });
   expect(db.getClip(id)!.status).toBe("review");
   expect(db.listClips()).toHaveLength(1);
+});
+
+test("upsertClip stores mtime and updates it on conflict", () => {
+  const db = createDb(":memory:");
+  db.upsertClip({ path: "/a.mp4", width: 1920, height: 1080, duration: 10, mtime: 1000 });
+  expect(db.listClips()[0].mtime).toBe(1000);
+  db.upsertClip({ path: "/a.mp4", width: 1920, height: 1080, duration: 10, mtime: 2000 });
+  expect(db.listClips()[0].mtime).toBe(2000);
+});
+
+test("setClipMtime backfills mtime by path", () => {
+  const db = createDb(":memory:");
+  db.upsertClip({ path: "/a.mp4" });
+  expect(db.listClips()[0].mtime).toBeNull();
+  db.setClipMtime("/a.mp4", 1234.5);
+  expect(db.listClips()[0].mtime).toBe(1234.5);
+});
+
+test("createDb migrates a pre-mtime database in place", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "clipdb-"));
+  const file = path.join(dir, "old.db");
+  try {
+    // Simulate an existing studio-data volume created before the mtime column.
+    const raw = new Database(file);
+    raw.exec(`
+      CREATE TABLE clips(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT UNIQUE NOT NULL,
+        width INTEGER, height INTEGER, duration REAL,
+        status TEXT NOT NULL DEFAULT 'new',
+        error TEXT,
+        transcript_json TEXT,
+        settings_json TEXT
+      );
+    `);
+    raw.prepare("INSERT INTO clips(path, width) VALUES (?, ?)").run("/legacy.mp4", 1920);
+    raw.close();
+
+    const db = createDb(file);
+    const legacy = db.listClips()[0];
+    expect(legacy.path).toBe("/legacy.mp4");
+    expect(legacy.mtime).toBeNull();
+    db.upsertClip({ path: "/new.mp4", mtime: 42 });
+    expect(db.listClips().find((c) => c.path === "/new.mp4")?.mtime).toBe(42);
+    db.close();
+
+    // Re-opening is idempotent (ALTER must not run twice).
+    const again = createDb(file);
+    expect(again.listClips()).toHaveLength(2);
+    again.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("presets: setPreset upserts and getPreset retrieves", () => {
