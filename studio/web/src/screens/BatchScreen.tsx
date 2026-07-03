@@ -31,26 +31,26 @@ export function BatchScreen() {
   const [vocab, setVocab] = useState("");
   const [vocabSaved, setVocabSaved] = useState(false);
 
-  // One-shot whisper health probe for the CPU-fallback / unreachable banner.
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .whisperHealth()
-      .then((health) => {
-        if (cancelled) return;
-        setWhisperWarning(
-          health.device === "cpu"
-            ? "Transcription running on CPU — this will be slow."
-            : null,
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setWhisperWarning("Whisper service unreachable.");
-      });
-    return () => {
-      cancelled = true;
-    };
+  // Whisper health probe for the CPU-fallback / unreachable banner. Runs on
+  // mount and again while jobs are in flight (see the polling effect below):
+  // whisper reports "unloaded" until the first transcription, so a mount-only
+  // probe would almost never see the CPU fallback.
+  const probeWhisper = useCallback(async () => {
+    try {
+      const health = await api.whisperHealth();
+      setWhisperWarning(
+        health.device === "cpu"
+          ? "Transcription running on CPU — this will be slow."
+          : null,
+      );
+    } catch {
+      setWhisperWarning("Whisper service unreachable.");
+    }
   }, []);
+
+  useEffect(() => {
+    void probeWhisper();
+  }, [probeWhisper]);
 
   // Load the custom vocabulary preset once.
   useEffect(() => {
@@ -105,9 +105,18 @@ export function BatchScreen() {
     (jobs !== null && (jobs.transcribe.queued > 0 || jobs.render.queued > 0));
   useEffect(() => {
     if (!active) return;
-    const timer = setInterval(() => void refresh(), 2000);
-    return () => clearInterval(timer);
-  }, [active, refresh]);
+    const timer = setInterval(() => {
+      void refresh();
+      // Cheap local call: re-probe so the CPU-fallback banner can appear once
+      // whisper actually loads a model.
+      void probeWhisper();
+    }, 2000);
+    return () => {
+      clearInterval(timer);
+      // One last probe when polling stops so the final device state sticks.
+      void probeWhisper();
+    };
+  }, [active, refresh, probeWhisper]);
 
   const toggle = (id: number) => {
     setSelected((prev) => {

@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { Clip, Db } from "./db.js";
 import { detectLayout } from "./scan.js";
+import { topPaneHeight } from "./composite.js";
 
 export interface Queue<T> {
   enqueue(job: T): void;
@@ -93,8 +94,12 @@ function defaultSettings(db: Db, clip: Clip): Record<string, unknown> {
   };
   const layout = detectLayout(clip.width ?? 0, clip.height ?? 0);
   if (layout === "dual") {
-    settings.webcamCrop = { x: 420, y: 0, w: 1080, h: 640 } satisfies CropRect;
+    const webcamCrop = { x: 420, y: 0, w: 1080, h: 640 } satisfies CropRect;
+    settings.webcamCrop = webcamCrop;
     settings.gameplayCrop = { x: 2526, y: 0, w: 608, h: 1080 } satisfies CropRect;
+    // Default caption sits at the webcam/gameplay seam: the top pane height
+    // for the default webcam crop, nudged up ~40px so the text overlaps it.
+    settings.captionY = topPaneHeight(webcamCrop) - 40;
   } else if (layout === "single") {
     settings.gameplayCrop = { x: 656, y: 0, w: 608, h: 1080 } satisfies CropRect;
     let webcamCrop: CropRect = { x: 0, y: 0, w: 480, h: 270 };
@@ -184,7 +189,14 @@ export async function transcribeClip(db: Db, clipId: number): Promise<void> {
 
     const bodyText = await res.text();
     if (res.status === 422 && bodyText.includes("no_speech")) {
-      db.updateClip(clip.id, { status: "no_speech" });
+      // Write defaults here too: a no_speech clip can still be marked ready
+      // and rendered, which requires settings (gameplayCrop etc.).
+      const fields: Parameters<Db["updateClip"]>[1] = { status: "no_speech" };
+      const fresh = db.getClip(clip.id) ?? clip;
+      if (!fresh.settings_json) {
+        fields.settings_json = JSON.stringify(defaultSettings(db, clip));
+      }
+      db.updateClip(clip.id, fields);
       return;
     }
     db.updateClip(clip.id, {

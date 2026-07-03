@@ -127,6 +127,29 @@ describe("transcribeClip", () => {
     const settings = JSON.parse(db.getClip(1)!.settings_json!);
     expect(settings.styleId).toBe("karaokeHighlight");
     expect(settings.webcamCrop).toEqual({ x: 420, y: 0, w: 1080, h: 640 });
+    // dual: caption sits at the webcam/gameplay seam. Default webcam crop
+    // scales to a 640px top pane; minus 40 so text overlaps the seam.
+    expect(settings.captionY).toBe(600);
+    db.close();
+  });
+
+  it("writes default settings on a no_speech 422 so the clip can still render", async () => {
+    const db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4", width: 3840, height: 1080 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "no_speech" }), { status: 422 }),
+      ),
+    );
+
+    await transcribeClip(db, 1);
+
+    const clip = db.getClip(1)!;
+    expect(clip.status).toBe("no_speech");
+    const settings = JSON.parse(clip.settings_json!);
+    expect(settings.gameplayCrop).toEqual({ x: 2526, y: 0, w: 608, h: 1080 });
     db.close();
   });
 

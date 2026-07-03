@@ -27,6 +27,17 @@ const TOP_MIN = 400;
 const TOP_MAX = 960;
 
 /**
+ * Height of the webcam (top) pane after scaling a crop rect to output width,
+ * clamped to [TOP_MIN, TOP_MAX] and forced even for the encoder.
+ */
+export function topPaneHeight(webcamCrop: CropRect): number {
+  let topH = Math.round((OUT_W * webcamCrop.h) / webcamCrop.w);
+  topH = Math.min(TOP_MAX, Math.max(TOP_MIN, topH));
+  if (topH % 2 !== 0) topH += 1;
+  return topH;
+}
+
+/**
  * Build the filter_complex that crops the webcam and gameplay regions out of
  * the source and stacks them vertically into a 1080x1920 frame. The webcam is
  * scaled to width 1080 preserving its crop aspect (clamped, forced even); the
@@ -47,9 +58,7 @@ export function buildStackFilter({
       );
     }
   }
-  let topH = Math.round((OUT_W * webcamCrop.h) / webcamCrop.w);
-  topH = Math.min(TOP_MAX, Math.max(TOP_MIN, topH));
-  if (topH % 2 !== 0) topH += 1;
+  const topH = topPaneHeight(webcamCrop);
   const bottomH = OUT_H - topH;
 
   const cam = `[0:v]crop=${webcamCrop.w}:${webcamCrop.h}:${webcamCrop.x}:${webcamCrop.y},scale=${OUT_W}:${topH}[cam]`;
