@@ -3,6 +3,7 @@ import { createReadStream, statSync } from "node:fs";
 import { z } from "zod";
 import type { Clip, ClipStatus, Db } from "./db.js";
 import { recordingsDir, transcribeClip, createQueue, type Queue } from "./jobs.js";
+import { renderClip, renderProgress } from "./render.js";
 import { scanRecordings } from "./scan.js";
 
 const idParamsSchema = z.object({ id: z.coerce.number().int().positive() });
@@ -53,14 +54,22 @@ function serializeClip(clip: Clip) {
   };
 }
 
-export function registerRoutes(
-  app: FastifyInstance,
+interface SerialJobQueue {
+  /** Enqueue eligible clip ids; returns how many were actually queued. */
+  enqueueClips(ids: number[]): number;
+  size(): number;
+}
+
+/**
+ * Serial queue plus a queued/running id set that closes the double-enqueue
+ * window before the worker flips the clip's status, and an eligibility check
+ * evaluated at enqueue time.
+ */
+function createJobQueue(
   db: Db,
-  worker: (clipId: number) => Promise<void> = (clipId) =>
-    transcribeClip(db, clipId),
-): void {
-  // Ids queued or currently running, to close the double-enqueue window
-  // before the worker flips the clip's status to 'transcribing'.
+  worker: (clipId: number) => Promise<void>,
+  eligible: (clip: Clip) => boolean,
+): SerialJobQueue {
   const queuedIds = new Set<number>();
   const queue: Queue<number> = createQueue(async (clipId) => {
     try {
@@ -69,24 +78,47 @@ export function registerRoutes(
       queuedIds.delete(clipId);
     }
   });
+  return {
+    enqueueClips(ids: number[]): number {
+      let queued = 0;
+      for (const id of ids) {
+        const clip = db.getClip(id);
+        if (!clip || !eligible(clip) || queuedIds.has(id)) continue;
+        queuedIds.add(id);
+        queue.enqueue(id);
+        queued++;
+      }
+      return queued;
+    },
+    size: () => queue.size(),
+  };
+}
+
+export function registerRoutes(
+  app: FastifyInstance,
+  db: Db,
+  worker: (clipId: number) => Promise<void> = (clipId) =>
+    transcribeClip(db, clipId),
+  renderWorker: (clipId: number) => Promise<void> = (clipId) =>
+    renderClip(db, clipId),
+): void {
+  const transcribeQueue = createJobQueue(
+    db,
+    worker,
+    (clip) => clip.status !== "transcribing",
+  );
+  // Separate serial queue for renders: both workloads own the GPU while they
+  // run, but transcription and rendering jobs should not block each other's
+  // queue ordering.
+  const renderQueue = createJobQueue(
+    db,
+    renderWorker,
+    (clip) => clip.status === "ready" || clip.status === "done",
+  );
 
   app.get("/api/clips", async () => db.listClips().map(serializeClip));
 
   app.post("/api/scan", async () => scanRecordings(db, recordingsDir()));
-
-  function enqueueClips(ids: number[]): number {
-    let queued = 0;
-    for (const id of ids) {
-      const clip = db.getClip(id);
-      if (!clip || clip.status === "transcribing" || queuedIds.has(id)) {
-        continue;
-      }
-      queuedIds.add(id);
-      queue.enqueue(id);
-      queued++;
-    }
-    return queued;
-  }
 
   app.post("/api/clips/:id/transcribe", async (req, reply) => {
     const params = idParamsSchema.safeParse(req.params);
@@ -94,7 +126,7 @@ export function registerRoutes(
     if (!db.getClip(params.data.id)) {
       return reply.code(404).send({ error: "clip not found" });
     }
-    return { queued: enqueueClips([params.data.id]) };
+    return { queued: transcribeQueue.enqueueClips([params.data.id]) };
   });
 
   app.post("/api/transcribe-batch", async (req, reply) => {
@@ -102,8 +134,33 @@ export function registerRoutes(
     if (!body.success) {
       return reply.code(400).send({ error: body.error.message });
     }
-    return { queued: enqueueClips(body.data.ids) };
+    return { queued: transcribeQueue.enqueueClips(body.data.ids) };
   });
+
+  app.post("/api/clips/:id/render", async (req, reply) => {
+    const params = idParamsSchema.safeParse(req.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid id" });
+    if (!db.getClip(params.data.id)) {
+      return reply.code(404).send({ error: "clip not found" });
+    }
+    return { queued: renderQueue.enqueueClips([params.data.id]) };
+  });
+
+  app.post("/api/render-batch", async (req, reply) => {
+    const body = batchSchema.safeParse(req.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: body.error.message });
+    }
+    return { queued: renderQueue.enqueueClips(body.data.ids) };
+  });
+
+  app.get("/api/jobs", async () => ({
+    transcribe: { queued: transcribeQueue.size() },
+    render: {
+      queued: renderQueue.size(),
+      progress: Object.fromEntries(renderProgress),
+    },
+  }));
 
   app.patch("/api/clips/:id", async (req, reply) => {
     const params = idParamsSchema.safeParse(req.params);

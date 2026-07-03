@@ -74,6 +74,65 @@ describe("POST /api/clips/:id/transcribe", () => {
   });
 });
 
+describe("render routes", () => {
+  it("enqueues only ready/done clips, dedupes, and reports queue sizes", async () => {
+    db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4" }); // status 'new'
+    db.upsertClip({ path: "/media/recordings/b.mp4" });
+    db.upsertClip({ path: "/media/recordings/c.mp4" });
+    db.updateClip(2, { status: "ready" });
+    db.updateClip(3, { status: "done" });
+
+    let release!: () => void;
+    const gate = new Promise<void>((res) => (release = res));
+    const started: number[] = [];
+    const app = Fastify();
+    registerRoutes(
+      app,
+      db,
+      async () => {},
+      async (id) => {
+        started.push(id);
+        await gate;
+      },
+    );
+
+    // Clip 1 is 'new': not render-eligible.
+    const notReady = await app.inject({ method: "POST", url: "/api/clips/1/render" });
+    expect(notReady.json()).toEqual({ queued: 0 });
+
+    const batch = await app.inject({
+      method: "POST",
+      url: "/api/render-batch",
+      payload: { ids: [1, 2, 3] },
+    });
+    expect(batch.json()).toEqual({ queued: 2 });
+
+    // Re-posting while queued/running is a no-op.
+    const dupe = await app.inject({ method: "POST", url: "/api/clips/2/render" });
+    expect(dupe.json()).toEqual({ queued: 0 });
+
+    const jobs = await app.inject({ method: "GET", url: "/api/jobs" });
+    expect(jobs.json()).toEqual({
+      transcribe: { queued: 0 },
+      render: { queued: 2, progress: {} },
+    });
+
+    release();
+    await new Promise((res) => setTimeout(res, 0));
+    expect(started).toEqual([2, 3]);
+    await app.close();
+  });
+
+  it("404s rendering a missing clip", async () => {
+    db = createDb(":memory:");
+    const app = buildApp(db);
+    const res = await app.inject({ method: "POST", url: "/api/clips/99/render" });
+    await app.close();
+    expect(res.statusCode).toBe(404);
+  });
+});
+
 describe("PATCH /api/clips/:id", () => {
   it("rejects an invalid status value", async () => {
     db = createDb(":memory:");
