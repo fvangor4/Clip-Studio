@@ -1,0 +1,7 @@
+node_modules/
+output/
+*.pyc
+__pycache__/
+dist/
+.venv/
+/data/
