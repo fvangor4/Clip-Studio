@@ -1,0 +1,115 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #16181d;
+  color: #e4e6eb;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.toolbar h1 {
+  font-size: 18px;
+  margin: 0;
+  margin-right: auto;
+}
+
+.toolbar a {
+  color: #7aa2f7;
+  text-decoration: none;
+}
+
+button {
+  background: #2a2e37;
+  color: #e4e6eb;
+  border: 1px solid #3d434f;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: #353b47;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+table.clips {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.clips th,
+table.clips td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #2a2e37;
+}
+
+table.clips tbody tr {
+  cursor: pointer;
+}
+
+table.clips tbody tr:hover {
+  background: #1e222a;
+}
+
+.filename {
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.badge {
+  background: #2a2e37;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #aab2c0;
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  background: #3d434f;
+  color: #e4e6eb;
+}
+
+.chip-new { background: #3d434f; }
+.chip-transcribing { background: #3b4a7a; color: #cdd9ff; }
+.chip-review { background: #6b5a2a; color: #ffe9b3; }
+.chip-no_speech { background: #2f333c; color: #8b93a3; }
+.chip-ready { background: #2c5a3c; color: #b8f0cd; }
+.chip-rendering { background: #4a3b7a; color: #ddd0ff; }
+.chip-done { background: #1f6b4a; color: #c6f6df; }
+.chip-error { background: #7a3038; color: #ffd0d5; }
+
+.muted {
+  color: #8b93a3;
+}
+
+.error-text {
+  color: #ff8a94;
+}
+
+.empty {
+  text-align: center;
+  padding: 32px;
+}
