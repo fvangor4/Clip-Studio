@@ -177,6 +177,25 @@ export function PreviewPlayer({
                 />
               </div>
             </>
+          ) : settings.gameplayCrop ? (
+            // Single-pane layout ("other" resolutions): the gameplay crop
+            // fills the whole 1080x1920 frame, no webcam stack.
+            <div
+              className="preview-pane"
+              style={{ width: OUT_W, height: OUT_H }}
+            >
+              <video
+                ref={primaryRef}
+                src={src}
+                preload="auto"
+                onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+                onEnded={() => setPlaying(false)}
+                style={videoStyle(
+                  { w: OUT_W, h: OUT_H },
+                  settings.gameplayCrop,
+                )}
+              />
+            </div>
           ) : (
             <video
               ref={primaryRef}

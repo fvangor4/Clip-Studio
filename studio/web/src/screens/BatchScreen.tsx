@@ -26,6 +26,57 @@ export function BatchScreen() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [whisperWarning, setWhisperWarning] = useState<string | null>(null);
+  const [warningDismissed, setWarningDismissed] = useState(false);
+  const [vocab, setVocab] = useState("");
+  const [vocabSaved, setVocabSaved] = useState(false);
+
+  // One-shot whisper health probe for the CPU-fallback / unreachable banner.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .whisperHealth()
+      .then((health) => {
+        if (cancelled) return;
+        setWhisperWarning(
+          health.device === "cpu"
+            ? "Transcription running on CPU — this will be slow."
+            : null,
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setWhisperWarning("Whisper service unreachable.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Load the custom vocabulary preset once.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getPreset("vocab")
+      .then((value) => {
+        if (!cancelled && typeof value === "string") setVocab(value);
+      })
+      .catch(() => {
+        // non-fatal: leave the textarea empty
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const saveVocab = async () => {
+    try {
+      await api.putPreset("vocab", vocab);
+      setVocabSaved(true);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const refresh = useCallback(async () => {
     try {
@@ -109,6 +160,38 @@ export function BatchScreen() {
         {active && <span className="muted">working…</span>}
         {error && <span className="error-text">{error}</span>}
       </header>
+      {whisperWarning && !warningDismissed && (
+        <div className="banner banner-warning" role="alert">
+          <span>{whisperWarning}</span>
+          <button
+            aria-label="Dismiss warning"
+            onClick={() => setWarningDismissed(true)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <details className="settings-panel">
+        <summary>Settings</summary>
+        <label htmlFor="vocab-input">
+          Custom vocabulary (game terms, names — passed to the transcriber as
+          an initial prompt)
+        </label>
+        <textarea
+          id="vocab-input"
+          rows={3}
+          value={vocab}
+          placeholder="e.g. Terraria, Moon Lord, Zenith"
+          onChange={(e) => {
+            setVocab(e.target.value);
+            setVocabSaved(false);
+          }}
+          onBlur={() => void saveVocab()}
+        />
+        <button onClick={() => void saveVocab()}>
+          {vocabSaved ? "Vocabulary saved" : "Save vocabulary"}
+        </button>
+      </details>
       <table className="clips">
         <thead>
           <tr>
@@ -152,6 +235,20 @@ export function BatchScreen() {
                     renderProgress[clip.id] !== undefined &&
                     ` ${Math.round(renderProgress[clip.id].progress * 100)}%`}
                 </span>
+                {(clip.status === "no_speech" || clip.status === "error") && (
+                  <button
+                    className="row-action"
+                    disabled={busy}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void run(() => api.transcribeClip(clip.id));
+                    }}
+                  >
+                    {clip.status === "no_speech"
+                      ? "Transcribe anyway"
+                      : "Retry transcribe"}
+                  </button>
+                )}
               </td>
             </tr>
           ))}

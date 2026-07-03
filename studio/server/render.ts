@@ -3,7 +3,11 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { compositeClip, type CropRect, type StackCrops } from "./composite.js";
+import {
+  compositeClip,
+  type CompositeCrops,
+  type CropRect,
+} from "./composite.js";
 import type { Db } from "./db.js";
 import type { TranscriptWord } from "./jobs.js";
 
@@ -154,7 +158,7 @@ export async function serveFile(
 }
 
 interface ClipSettings {
-  webcamCrop?: CropRect;
+  webcamCrop?: CropRect | null;
   gameplayCrop?: CropRect;
   styleId?: string;
   mode?: string;
@@ -191,11 +195,12 @@ export async function renderClip(
     renderProgress.set(clip.id, { progress: 0, stage: "composite" });
 
     const settings = JSON.parse(clip.settings_json ?? "{}") as ClipSettings;
-    if (!settings.webcamCrop || !settings.gameplayCrop) {
-      throw new Error("clip settings missing webcamCrop/gameplayCrop");
+    if (!settings.gameplayCrop) {
+      throw new Error("clip settings missing gameplayCrop");
     }
-    const crops: StackCrops = {
-      webcamCrop: settings.webcamCrop,
+    // webcamCrop null/absent → single-pane composite (unrecognized layout).
+    const crops: CompositeCrops = {
+      webcamCrop: settings.webcamCrop ?? null,
       gameplayCrop: settings.gameplayCrop,
     };
 

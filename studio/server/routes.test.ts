@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "./db.js";
 import { buildApp } from "./index.js";
 import { registerRoutes } from "./routes.js";
@@ -71,6 +71,69 @@ describe("POST /api/clips/:id/transcribe", () => {
     await new Promise((res) => setTimeout(res, 0));
     expect(started).toEqual([1, 2]);
     await app.close();
+  });
+});
+
+describe("transcribe eligibility", () => {
+  it("re-enqueues no_speech and error clips but not transcribing ones", async () => {
+    db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4" });
+    db.upsertClip({ path: "/media/recordings/b.mp4" });
+    db.upsertClip({ path: "/media/recordings/c.mp4" });
+    db.updateClip(1, { status: "no_speech" });
+    db.updateClip(2, { status: "error", error: "boom" });
+    db.updateClip(3, { status: "transcribing" });
+
+    let release!: () => void;
+    const gate = new Promise<void>((res) => (release = res));
+    const app = Fastify();
+    registerRoutes(app, db, async () => gate);
+
+    const noSpeech = await app.inject({ method: "POST", url: "/api/clips/1/transcribe" });
+    expect(noSpeech.json()).toEqual({ queued: 1 });
+    const errored = await app.inject({ method: "POST", url: "/api/clips/2/transcribe" });
+    expect(errored.json()).toEqual({ queued: 1 });
+    const inFlight = await app.inject({ method: "POST", url: "/api/clips/3/transcribe" });
+    expect(inFlight.json()).toEqual({ queued: 0 });
+
+    release();
+    await app.close();
+  });
+});
+
+describe("GET /api/whisper-health", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("proxies the whisper health payload", async () => {
+    db = createDb(":memory:");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ status: "ok", device: "cpu" }), {
+            status: 200,
+          }),
+      ),
+    );
+    const app = buildApp(db);
+    const res = await app.inject({ method: "GET", url: "/api/whisper-health" });
+    await app.close();
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: "ok", device: "cpu" });
+  });
+
+  it("502s when whisper is unreachable", async () => {
+    db = createDb(":memory:");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+    );
+    const app = buildApp(db);
+    const res = await app.inject({ method: "GET", url: "/api/whisper-health" });
+    await app.close();
+    expect(res.statusCode).toBe(502);
   });
 });
 

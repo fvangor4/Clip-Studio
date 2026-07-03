@@ -107,8 +107,42 @@ function defaultSettings(db: Db, clip: Clip): Record<string, unknown> {
       }
     }
     settings.webcamCrop = webcamCrop;
+  } else {
+    // Unrecognized resolution: single full-height centered 9:16 gameplay
+    // crop, no webcam stack. webcamCrop null signals single-pane compositing.
+    const srcW = clip.width ?? 1920;
+    const srcH = clip.height ?? 1080;
+    let w = Math.min(srcW, Math.round((srcH * 9) / 16));
+    if (w % 2 !== 0) w -= 1;
+    settings.gameplayCrop = {
+      x: Math.max(0, Math.round((srcW - w) / 2)),
+      y: 0,
+      w,
+      h: srcH,
+    } satisfies CropRect;
+    settings.webcamCrop = null;
   }
   return settings;
+}
+
+/**
+ * Custom vocabulary for whisper's initial prompt. The UI stores the preset
+ * via PUT /api/presets/vocab, which JSON-encodes the body — so the stored
+ * value is usually a JSON string. Accept both JSON-string and raw-text
+ * shapes; empty/whitespace yields undefined.
+ */
+export function vocabPrompt(raw: string | undefined | null): string | undefined {
+  if (!raw) return undefined;
+  let text = raw;
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "string") text = parsed;
+    else if (parsed === null) return undefined;
+  } catch {
+    // raw text stored directly (e.g. seeded by hand): use as-is
+  }
+  const trimmed = text.trim();
+  return trimmed === "" ? undefined : trimmed;
 }
 
 /**
@@ -123,13 +157,12 @@ export async function transcribeClip(db: Db, clipId: number): Promise<void> {
   try {
     db.updateClip(clip.id, { status: "transcribing", error: null });
 
-    const vocab = db.getPreset("vocab");
     const res = await fetch(`${WHISPER_API_URL}/transcribe`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         path: containerPath(clip.path),
-        initial_prompt: vocab || undefined,
+        initial_prompt: vocabPrompt(db.getPreset("vocab")),
       }),
     });
 

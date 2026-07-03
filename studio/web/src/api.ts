@@ -57,6 +57,11 @@ export interface ClipPatch {
   status?: ClipStatus;
 }
 
+export interface WhisperHealth {
+  status: string;
+  device: string;
+}
+
 export const api = {
   listClips: () => request<Clip[]>("/api/clips"),
   getClip: (id: number) => request<Clip>(`/api/clips/${id}`),
@@ -73,6 +78,17 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(value),
     }),
+  /** Returns null when the preset does not exist yet. */
+  getPreset: async (name: string): Promise<unknown> => {
+    const res = await fetch(`/api/presets/${name}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`/api/presets/${name}: HTTP ${res.status}`);
+    const data = (await res.json()) as { value: unknown };
+    return data.value;
+  },
+  whisperHealth: () => request<WhisperHealth>("/api/whisper-health"),
+  transcribeClip: (id: number) =>
+    post<{ queued: number }>(`/api/clips/${id}/transcribe`),
   getJobs: () => request<Jobs>("/api/jobs"),
   scan: () => post<unknown>("/api/scan"),
   transcribeBatch: (ids: number[]) =>

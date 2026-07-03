@@ -2,7 +2,13 @@ import type { FastifyInstance } from "fastify";
 import { createReadStream, statSync } from "node:fs";
 import { z } from "zod";
 import type { Clip, ClipStatus, Db } from "./db.js";
-import { recordingsDir, transcribeClip, createQueue, type Queue } from "./jobs.js";
+import {
+  recordingsDir,
+  transcribeClip,
+  createQueue,
+  WHISPER_API_URL,
+  type Queue,
+} from "./jobs.js";
 import { renderClip, renderProgress } from "./render.js";
 import { scanRecordings } from "./scan.js";
 
@@ -151,6 +157,20 @@ export function registerRoutes(
   });
 
   app.post("/api/scan", async () => scanRecordings(db, recordingsDir()));
+
+  // Proxy the whisper container's health so the browser (which cannot reach
+  // the compose network) can show CPU-fallback / unreachable warnings.
+  app.get("/api/whisper-health", async (_req, reply) => {
+    try {
+      const res = await fetch(`${WHISPER_API_URL}/health`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) throw new Error(`whisper-api ${res.status}`);
+      return (await res.json()) as { status: string; device: string };
+    } catch {
+      return reply.code(502).send({ error: "whisper service unreachable" });
+    }
+  });
 
   app.post("/api/clips/:id/transcribe", async (req, reply) => {
     const params = idParamsSchema.safeParse(req.params);

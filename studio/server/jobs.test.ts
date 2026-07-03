@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { createQueue, containerPath, transcribeClip } from "./jobs.js";
+import { createQueue, containerPath, transcribeClip, vocabPrompt } from "./jobs.js";
 import { createDb } from "./db.js";
 
 function deferred() {
@@ -130,6 +130,43 @@ describe("transcribeClip", () => {
     db.close();
   });
 
+  it("gives 'other' resolutions a centered full-height 9:16 crop, no webcam", async () => {
+    const db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4", width: 2560, height: 1440 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response(JSON.stringify({ words: [] }), { status: 200 }),
+      ),
+    );
+
+    await transcribeClip(db, 1);
+
+    const settings = JSON.parse(db.getClip(1)!.settings_json!);
+    // round(1440 * 9/16) = 810 (even), centered: (2560-810)/2 = 875
+    expect(settings.gameplayCrop).toEqual({ x: 875, y: 0, w: 810, h: 1440 });
+    expect(settings.webcamCrop).toBeNull();
+    db.close();
+  });
+
+  it("sends the vocab preset as a plain initial_prompt string", async () => {
+    const db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4", width: 1920, height: 1080 });
+    // Stored via PUT /api/presets/vocab: body JSON-encoded → quoted string.
+    db.setPreset("vocab", JSON.stringify("Terraria, Moonlord"));
+    const fetchSpy = vi.fn(
+      async (_url: string, init?: RequestInit) =>
+        new Response(JSON.stringify({ words: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await transcribeClip(db, 1);
+
+    const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
+    expect(body.initial_prompt).toBe("Terraria, Moonlord");
+    db.close();
+  });
+
   it("is a no-op for a clip deleted while queued", async () => {
     const db = createDb(":memory:");
     const fetchSpy = vi.fn();
@@ -137,6 +174,23 @@ describe("transcribeClip", () => {
     await expect(transcribeClip(db, 42)).resolves.toBeUndefined();
     expect(fetchSpy).not.toHaveBeenCalled();
     db.close();
+  });
+});
+
+describe("vocabPrompt", () => {
+  it("unwraps a JSON-encoded string (as stored by the presets API)", () => {
+    expect(vocabPrompt(JSON.stringify("Vex, Rylai"))).toBe("Vex, Rylai");
+  });
+
+  it("passes raw text through", () => {
+    expect(vocabPrompt("plain text vocab")).toBe("plain text vocab");
+  });
+
+  it("returns undefined for empty/whitespace/null-ish values", () => {
+    expect(vocabPrompt(undefined)).toBeUndefined();
+    expect(vocabPrompt("")).toBeUndefined();
+    expect(vocabPrompt(JSON.stringify("   "))).toBeUndefined();
+    expect(vocabPrompt("null")).toBeUndefined();
   });
 });
 

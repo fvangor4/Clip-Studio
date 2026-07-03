@@ -15,6 +15,12 @@ export interface StackCrops {
   gameplayCrop: CropRect;
 }
 
+export interface CompositeCrops {
+  /** null → single-pane layout: gameplay crop fills the whole frame. */
+  webcamCrop: CropRect | null;
+  gameplayCrop: CropRect;
+}
+
 const OUT_W = 1080;
 const OUT_H = 1920;
 const TOP_MIN = 400;
@@ -49,6 +55,20 @@ export function buildStackFilter({
   const cam = `[0:v]crop=${webcamCrop.w}:${webcamCrop.h}:${webcamCrop.x}:${webcamCrop.y},scale=${OUT_W}:${topH}[cam]`;
   const game = `[0:v]crop=${gameplayCrop.w}:${gameplayCrop.h}:${gameplayCrop.x}:${gameplayCrop.y},scale=${OUT_W}:${bottomH}[game]`;
   return `${cam};${game};[cam][game]vstack=inputs=2[out]`;
+}
+
+/**
+ * Filter for single-pane clips (no webcam stack, e.g. unrecognized "other"
+ * layouts): crop the gameplay rect and scale it to fill the whole 1080x1920
+ * frame.
+ */
+export function buildSingleFilter(gameplayCrop: CropRect): string {
+  if (gameplayCrop.w <= 0 || gameplayCrop.h <= 0) {
+    throw new Error(
+      `gameplayCrop must have positive w/h, got ${gameplayCrop.w}x${gameplayCrop.h}`,
+    );
+  }
+  return `[0:v]crop=${gameplayCrop.w}:${gameplayCrop.h}:${gameplayCrop.x}:${gameplayCrop.y},scale=${OUT_W}:${OUT_H}[out]`;
 }
 
 /** Video encoder; override with ENCODER=libx264 when NVENC is unavailable. */
@@ -93,14 +113,19 @@ export function buildCompositeArgs(
  */
 export async function compositeClip(
   clip: Clip,
-  settings: StackCrops,
+  settings: CompositeCrops,
   workDir: string,
   src: string = clip.path,
 ): Promise<string> {
   const outDir = path.join(workDir, String(clip.id));
   await mkdir(outDir, { recursive: true });
   const out = path.join(outDir, "base.mp4");
-  const filter = buildStackFilter(settings);
+  const filter = settings.webcamCrop
+    ? buildStackFilter({
+        webcamCrop: settings.webcamCrop,
+        gameplayCrop: settings.gameplayCrop,
+      })
+    : buildSingleFilter(settings.gameplayCrop);
   await runFFmpeg(buildCompositeArgs(src, filter, out));
   return out;
 }

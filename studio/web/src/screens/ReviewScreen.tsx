@@ -158,7 +158,16 @@ export function ReviewScreen() {
         <div className="review-panel">
           <section>
             <h2>Transcript</h2>
-            <TranscriptEditor words={words} onChange={updateWords} />
+            {clip.transcript === null && words.length === 0 ? (
+              <p className="muted">
+                No transcript for this clip
+                {clip.status === "no_speech" && " (no speech was detected)"}.
+                Transcribe it from the batch screen first, or render it
+                without captions.
+              </p>
+            ) : (
+              <TranscriptEditor words={words} onChange={updateWords} />
+            )}
           </section>
 
           <section>

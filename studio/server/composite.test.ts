@@ -1,5 +1,22 @@
 import { describe, expect, test } from "vitest";
-import { buildCompositeArgs, buildStackFilter } from "./composite.js";
+import {
+  buildCompositeArgs,
+  buildSingleFilter,
+  buildStackFilter,
+} from "./composite.js";
+
+describe("buildSingleFilter", () => {
+  test("crops the gameplay rect and scales it to fill 1080x1920", () => {
+    const f = buildSingleFilter({ x: 663, y: 0, w: 607, h: 1080 });
+    expect(f).toBe("[0:v]crop=607:1080:663:0,scale=1080:1920[out]");
+  });
+
+  test("rejects a non-positive crop", () => {
+    expect(() => buildSingleFilter({ x: 0, y: 0, w: 0, h: 1080 })).toThrow(
+      /positive/,
+    );
+  });
+});
 
 describe("buildStackFilter", () => {
   test("crops both regions and stacks to 1080x1920", () => {

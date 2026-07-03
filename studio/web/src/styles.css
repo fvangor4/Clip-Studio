@@ -345,3 +345,60 @@ table.clips tbody tr:hover {
 .crop-rect:active {
   cursor: grabbing;
 }
+
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+}
+
+.banner-warning {
+  background: rgba(224, 175, 104, 0.15);
+  border: 1px solid #e0af68;
+  color: #e0af68;
+}
+
+.banner button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.settings-panel {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid #2a2e37;
+  border-radius: 6px;
+}
+
+.settings-panel summary {
+  cursor: pointer;
+}
+
+.settings-panel label {
+  display: block;
+  margin: 8px 0 4px;
+  color: #9aa0ac;
+  font-size: 13px;
+}
+
+.settings-panel textarea {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  margin-bottom: 8px;
+  resize: vertical;
+}
+
+.row-action {
+  margin-left: 8px;
+  font-size: 12px;
+  padding: 2px 8px;
+}
