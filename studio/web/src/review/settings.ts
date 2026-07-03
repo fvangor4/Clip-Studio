@@ -21,7 +21,8 @@ export interface ClipSettings {
   captionY: number;
   highlightColor?: string;
   fontSize?: number;
-  webcamCrop?: CropRect;
+  /** null = intentional gameplay-only (single-pane) composite. */
+  webcamCrop?: CropRect | null;
   gameplayCrop?: CropRect;
 }
 
@@ -81,6 +82,32 @@ export function defaultCrops(
 }
 
 /**
+ * Full-height centered 9:16 crop within the gameplay monitor region, used
+ * when the webcam pane is disabled ("gameplay only"): the crop then fills
+ * the whole 1080x1920 output. Dual layouts use the right monitor
+ * (1920..3840); single/other use the whole frame.
+ */
+export function gameplayOnlyCrop(
+  layout: Layout,
+  width: number | null,
+  height: number | null,
+): CropRect {
+  const srcW = width ?? 1920;
+  const srcH = height ?? 1080;
+  const monitorX = layout === "dual" ? 1920 : 0;
+  const monitorW = layout === "dual" ? 1920 : srcW;
+  const monitorH = layout === "dual" ? 1080 : srcH;
+  let cw = Math.min(monitorW, Math.round((monitorH * 9) / 16));
+  if (cw % 2 !== 0) cw -= 1;
+  return {
+    x: monitorX + Math.max(0, Math.round((monitorW - cw) / 2)),
+    y: 0,
+    w: cw,
+    h: monitorH,
+  };
+}
+
+/**
  * Fill in defaults matching server/jobs.ts defaultSettings. When the stored
  * settings lack crop rects (e.g. saved while the clip was still transcribing),
  * synthesize them from the clip resolution so the crop controls always work.
@@ -91,7 +118,11 @@ export function normalizeSettings(
 ): ClipSettings {
   const r = raw ?? {};
   const fallback = clip ? defaultCrops(clip.width, clip.height) : {};
-  const webcamCrop = asCrop(r.webcamCrop) ?? fallback.webcamCrop;
+  // Explicit null means "gameplay only" — do not re-add the default webcam.
+  const webcamCrop =
+    r.webcamCrop === null
+      ? null
+      : (asCrop(r.webcamCrop) ?? fallback.webcamCrop);
   const gameplayCrop = asCrop(r.gameplayCrop) ?? fallback.gameplayCrop;
   return {
     styleId: typeof r.styleId === "string" ? r.styleId : "karaokeHighlight",
@@ -101,7 +132,7 @@ export function normalizeSettings(
       highlightColor: r.highlightColor,
     }),
     ...(typeof r.fontSize === "number" && { fontSize: r.fontSize }),
-    ...(webcamCrop && { webcamCrop }),
+    ...(webcamCrop !== undefined && { webcamCrop }),
     ...(gameplayCrop && { gameplayCrop }),
   };
 }

@@ -103,9 +103,12 @@ export function PreviewPlayer({
   const style = resolveStyle(settings.styleId);
   const StyleComponent = style.component;
 
-  const stacked =
-    settings.webcamCrop !== undefined && settings.gameplayCrop !== undefined;
-  const topH = stacked ? topPaneHeight(settings.webcamCrop!) : 0;
+  // webcamCrop null (gameplay only) or undefined → single-pane fallback,
+  // mirroring server/composite.ts buildSingleFilter.
+  const webcamCrop =
+    settings.gameplayCrop !== undefined ? (settings.webcamCrop ?? null) : null;
+  const stacked = webcamCrop !== null;
+  const topH = stacked ? topPaneHeight(webcamCrop) : 0;
   const scale = previewWidth / OUT_W;
 
   const videoStyle = (pane: { w: number; h: number }, crop?: {
@@ -157,7 +160,7 @@ export function PreviewPlayer({
                   onEnded={() => setPlaying(false)}
                   style={videoStyle(
                     { w: OUT_W, h: topH },
-                    settings.webcamCrop,
+                    webcamCrop ?? undefined,
                   )}
                 />
               </div>

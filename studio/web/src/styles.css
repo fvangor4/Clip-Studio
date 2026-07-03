@@ -346,6 +346,32 @@ table.clips tbody tr:hover {
   cursor: grabbing;
 }
 
+/* Corner resize handles: 16px hit area with a small visible square inside. */
+.crop-handle {
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.crop-handle::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: #7aa2f7;
+  border: 1px solid #0b0e14;
+  border-radius: 2px;
+}
+
+.gameplay-only-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
 .banner {
   display: flex;
   align-items: center;

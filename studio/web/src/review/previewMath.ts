@@ -52,6 +52,50 @@ export function cropVideoStyle(
   };
 }
 
+export type Corner = "nw" | "ne" | "sw" | "se";
+
+/**
+ * Resize a crop by dragging one corner by (dx, dy) in source-space px. The
+ * opposite corner stays anchored; the moving corner is clamped to the source
+ * bounds and kept at least `minSize` away from the anchor on each axis.
+ * Results are rounded to integers.
+ */
+export function resizeCrop(
+  crop: CropRect,
+  corner: Corner,
+  dx: number,
+  dy: number,
+  bounds: { w: number; h: number },
+  minSize = 120,
+): CropRect {
+  const left = crop.x;
+  const top = crop.y;
+  const right = crop.x + crop.w;
+  const bottom = crop.y + crop.h;
+  const movesLeft = corner === "nw" || corner === "sw";
+  const movesTop = corner === "nw" || corner === "ne";
+
+  let x0 = left;
+  let x1 = right;
+  let y0 = top;
+  let y1 = bottom;
+  if (movesLeft) {
+    x0 = Math.min(Math.max(0, left + dx), right - minSize);
+  } else {
+    x1 = Math.max(Math.min(bounds.w, right + dx), left + minSize);
+  }
+  if (movesTop) {
+    y0 = Math.min(Math.max(0, top + dy), bottom - minSize);
+  } else {
+    y1 = Math.max(Math.min(bounds.h, bottom + dy), top + minSize);
+  }
+  x0 = Math.round(x0);
+  x1 = Math.round(x1);
+  y0 = Math.round(y0);
+  y1 = Math.round(y1);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
 /** Clamp a crop rect's position inside the source bounds (size unchanged). */
 export function clampCrop(
   crop: CropRect,

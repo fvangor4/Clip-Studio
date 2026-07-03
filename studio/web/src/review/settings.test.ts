@@ -1,5 +1,10 @@
 import { expect, test } from "vitest";
-import { defaultCrops, detectLayout, normalizeSettings } from "./settings";
+import {
+  defaultCrops,
+  detectLayout,
+  gameplayOnlyCrop,
+  normalizeSettings,
+} from "./settings";
 
 test("detectLayout mirrors server/scan.ts", () => {
   expect(detectLayout(3840, 1080)).toBe("dual");
@@ -44,4 +49,52 @@ test("normalizeSettings keeps stored crops over defaults", () => {
   const stored = { gameplayCrop: { x: 100, y: 0, w: 600, h: 1080 } };
   const s = normalizeSettings(stored, { width: 3840, height: 1080 });
   expect(s.gameplayCrop).toEqual(stored.gameplayCrop);
+});
+
+test("normalizeSettings preserves an explicit null webcamCrop (gameplay only)", () => {
+  const s = normalizeSettings(
+    { webcamCrop: null, gameplayCrop: { x: 2576, y: 0, w: 608, h: 1080 } },
+    { width: 3840, height: 1080 },
+  );
+  expect(s.webcamCrop).toBeNull();
+  expect(s.gameplayCrop).toEqual({ x: 2576, y: 0, w: 608, h: 1080 });
+});
+
+test("normalizeSettings still fills defaults when webcamCrop is absent", () => {
+  const s = normalizeSettings({}, { width: 3840, height: 1080 });
+  expect(s.webcamCrop).toEqual({ x: 420, y: 0, w: 1080, h: 640 });
+});
+
+test("gameplayOnlyCrop centers a full-height 9:16 crop in the right monitor for dual", () => {
+  // 1080 tall -> w = round(1080*9/16) = 608 (even), centered in [1920, 3840)
+  expect(gameplayOnlyCrop("dual", 3840, 1080)).toEqual({
+    x: 1920 + 656,
+    y: 0,
+    w: 608,
+    h: 1080,
+  });
+});
+
+test("gameplayOnlyCrop uses the whole frame for single layout", () => {
+  expect(gameplayOnlyCrop("single", 1920, 1080)).toEqual({
+    x: 656,
+    y: 0,
+    w: 608,
+    h: 1080,
+  });
+});
+
+test("gameplayOnlyCrop handles other resolutions and null dimensions", () => {
+  expect(gameplayOnlyCrop("other", 2560, 1440)).toEqual({
+    x: 875,
+    y: 0,
+    w: 810,
+    h: 1440,
+  });
+  expect(gameplayOnlyCrop("other", null, null)).toEqual({
+    x: 656,
+    y: 0,
+    w: 608,
+    h: 1080,
+  });
 });

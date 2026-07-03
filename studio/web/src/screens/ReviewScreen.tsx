@@ -4,7 +4,9 @@ import { api, type Clip, type TranscriptWord } from "../api";
 import { CropControl } from "../review/CropControl";
 import { PreviewPlayer } from "../review/PreviewPlayer";
 import {
+  defaultCrops,
   detectLayout,
+  gameplayOnlyCrop,
   normalizeSettings,
   type ClipSettings,
 } from "../review/settings";
@@ -205,6 +207,39 @@ export function ReviewScreen() {
 
           <section>
             <h2>Crops</h2>
+            {(layout !== "other" || settings.webcamCrop != null) && (
+              <label className="gameplay-only-toggle">
+                <input
+                  type="checkbox"
+                  checked={settings.webcamCrop === null}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      // Single-pane composite: drop the webcam and make sure
+                      // the gameplay crop is a full-frame 9:16 shape (the
+                      // pane-fitted default is wider than 9:16).
+                      const gc = settings.gameplayCrop;
+                      const is916 =
+                        gc && Math.abs(gc.w / gc.h - 9 / 16) < 0.01;
+                      updateSettings({
+                        webcamCrop: null,
+                        ...(is916
+                          ? {}
+                          : {
+                              gameplayCrop: gameplayOnlyCrop(
+                                layout,
+                                clip.width,
+                                clip.height,
+                              ),
+                            }),
+                      });
+                    } else {
+                      updateSettings(defaultCrops(clip.width, clip.height));
+                    }
+                  }}
+                />{" "}
+                Gameplay only (no webcam)
+              </label>
+            )}
             {settings.webcamCrop && (
               <CropControl
                 label="Webcam"
