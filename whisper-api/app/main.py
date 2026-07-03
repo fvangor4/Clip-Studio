@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 
@@ -7,11 +8,14 @@ from pydantic import BaseModel
 
 from app.transcribe import flatten_words
 
+logger = logging.getLogger("whisper-api")
+
 app = FastAPI()
 
 _model = None
 _device = None
 _lock = threading.Lock()
+_inference_lock = threading.Lock()
 
 
 class TranscribeRequest(BaseModel):
@@ -28,6 +32,7 @@ def _get_model():
                 _model = WhisperModel("distil-large-v3", device="cuda", compute_type="float16")
                 _device = "cuda"
             except Exception:
+                logger.exception("CUDA model load failed; falling back to CPU int8")
                 _model = WhisperModel("distil-large-v3", device="cpu", compute_type="int8")
                 _device = "cpu"
         return _model
@@ -35,7 +40,7 @@ def _get_model():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "device": _device or "cuda"}
+    return {"status": "ok", "device": _device or "unloaded"}
 
 
 @app.post("/transcribe")
@@ -43,9 +48,15 @@ def transcribe(req: TranscribeRequest):
     if not os.path.isfile(req.path):
         raise HTTPException(status_code=404, detail="file not found")
     model = _get_model()
-    segments, info = model.transcribe(req.path, word_timestamps=True,
-                                      initial_prompt=req.initial_prompt)
-    words = flatten_words(segments)
+    try:
+        with _inference_lock:
+            segments, info = model.transcribe(req.path, word_timestamps=True,
+                                              initial_prompt=req.initial_prompt)
+            words = flatten_words(segments)
+    except Exception as e:
+        logger.exception("transcription failed for %s", req.path)
+        return JSONResponse(status_code=400,
+                            content={"error": "decode_failed", "detail": str(e)})
     if not words:
         return JSONResponse(status_code=422, content={"error": "no_speech"})
     return {"words": words, "language": info.language, "duration": info.duration}
