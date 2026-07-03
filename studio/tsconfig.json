@@ -8,7 +8,9 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["server/**/*.ts", "shared/**/*.ts"]
+  "include": ["server/**/*.ts", "shared/**/*.ts", "remotion/**/*.ts", "remotion/**/*.tsx"]
 }
