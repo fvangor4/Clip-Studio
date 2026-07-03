@@ -65,7 +65,10 @@ export function containerPath(
   clipPath: string,
   root: string = recordingsDir(),
 ): string {
-  const relative = path.relative(root, clipPath).split(path.sep).join("/");
+  // Normalize Windows separators first so this works regardless of the
+  // platform the code runs on (dev on Windows, CI/containers on Linux).
+  const toPosix = (p: string) => p.replaceAll("\\", "/");
+  const relative = path.posix.relative(toPosix(root), toPosix(clipPath));
   return path.posix.join(CONTAINER_RECORDINGS_ROOT, relative);
 }
 
