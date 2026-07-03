@@ -34,13 +34,15 @@ WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
+
+# Pre-bake Remotion's chrome-headless-shell (downloads into node_modules/.remotion).
+# Kept above the source COPYs so code changes don't invalidate the ~100MB layer.
+RUN npx remotion browser ensure
+
 COPY shared ./shared
 COPY remotion ./remotion
 COPY server ./server
 COPY --from=build /app/web/dist ./web/dist
-
-# Pre-bake Remotion's chrome-headless-shell (downloads into node_modules/.remotion)
-RUN npx remotion browser ensure
 
 EXPOSE 3000
 CMD ["npx", "tsx", "server/index.ts"]
