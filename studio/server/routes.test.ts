@@ -159,3 +159,70 @@ describe("PATCH /api/clips/:id", () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+describe("GET /api/clips/:id", () => {
+  it("returns a single serialized clip", async () => {
+    db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4", width: 1920, height: 1080 });
+    db.updateClip(1, {
+      settings_json: JSON.stringify({ styleId: "boldPop", captionY: 900 }),
+    });
+    const app = buildApp(db);
+    const res = await app.inject({ method: "GET", url: "/api/clips/1" });
+    await app.close();
+    expect(res.statusCode).toBe(200);
+    expect(res.json().settings).toEqual({ styleId: "boldPop", captionY: 900 });
+    expect(res.json()).not.toHaveProperty("settings_json");
+  });
+
+  it("404s for a missing clip", async () => {
+    db = createDb(":memory:");
+    const app = buildApp(db);
+    const res = await app.inject({ method: "GET", url: "/api/clips/42" });
+    await app.close();
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("presets API", () => {
+  it("round-trips a JSON preset", async () => {
+    db = createDb(":memory:");
+    const app = buildApp(db);
+    const put = await app.inject({
+      method: "PUT",
+      url: "/api/presets/webcamRegion",
+      payload: { x: 12, y: 34, w: 480, h: 270 },
+    });
+    expect(put.statusCode).toBe(200);
+    const get = await app.inject({ method: "GET", url: "/api/presets/webcamRegion" });
+    await app.close();
+    expect(get.statusCode).toBe(200);
+    expect(get.json()).toEqual({
+      name: "webcamRegion",
+      value: { x: 12, y: 34, w: 480, h: 270 },
+    });
+    expect(db.getPreset("webcamRegion")).toBe(
+      JSON.stringify({ x: 12, y: 34, w: 480, h: 270 }),
+    );
+  });
+
+  it("404s an unknown preset", async () => {
+    db = createDb(":memory:");
+    const app = buildApp(db);
+    const res = await app.inject({ method: "GET", url: "/api/presets/nope" });
+    await app.close();
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("rejects an invalid preset name", async () => {
+    db = createDb(":memory:");
+    const app = buildApp(db);
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/presets/bad%2Fname",
+      payload: { x: 1 },
+    });
+    await app.close();
+    expect(res.statusCode).toBe(400);
+  });
+});

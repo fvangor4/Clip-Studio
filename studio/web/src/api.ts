@@ -51,8 +51,28 @@ function post<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
+export interface ClipPatch {
+  transcript?: TranscriptWord[];
+  settings?: Record<string, unknown>;
+  status?: ClipStatus;
+}
+
 export const api = {
   listClips: () => request<Clip[]>("/api/clips"),
+  getClip: (id: number) => request<Clip>(`/api/clips/${id}`),
+  patchClip: (id: number, patch: ClipPatch) =>
+    request<Clip>(`/api/clips/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
+  clipFileUrl: (id: number) => `/api/clips/${id}/file`,
+  putPreset: (name: string, value: unknown) =>
+    request<{ name: string; value: unknown }>(`/api/presets/${name}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(value),
+    }),
   getJobs: () => request<Jobs>("/api/jobs"),
   scan: () => post<unknown>("/api/scan"),
   transcribeBatch: (ids: number[]) =>

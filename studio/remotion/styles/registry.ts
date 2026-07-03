@@ -8,6 +8,14 @@ export interface CaptionStyleProps {
   activeIndex: number;
   /** Current time in seconds. */
   t: number;
+  /**
+   * Current frame / fps for animated styles. Optional: when omitted the
+   * component falls back to Remotion's useCurrentFrame/useVideoConfig, so
+   * the Remotion render path is unchanged. Pass both when rendering outside
+   * a Remotion context (e.g. the web preview overlay).
+   */
+  frame?: number;
+  fps?: number;
   highlightColor?: string;
   fontSize?: number;
 }

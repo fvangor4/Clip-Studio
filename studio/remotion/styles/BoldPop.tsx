@@ -1,14 +1,12 @@
 import { spring, useCurrentFrame, useVideoConfig } from "remotion";
 import type { CaptionStyleProps } from "./registry";
 
-/** Single active word, extra-bold, outlined, spring pop on each word start. */
-export const BoldPop: React.FC<CaptionStyleProps> = ({
-  line,
-  activeIndex,
-  fontSize = 90,
-}) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+/**
+ * Inner body once frame/fps are known — pure React, safe outside Remotion.
+ */
+const BoldPopFrame: React.FC<
+  CaptionStyleProps & { frame: number; fps: number }
+> = ({ line, activeIndex, fontSize = 90, frame, fps }) => {
   const word = line.words[activeIndex];
   if (!word) return null;
 
@@ -35,4 +33,24 @@ export const BoldPop: React.FC<CaptionStyleProps> = ({
       {word.text}
     </div>
   );
+};
+
+/** Remotion path: reads frame/fps from hooks. */
+const BoldPopRemotion: React.FC<CaptionStyleProps> = (props) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  return <BoldPopFrame {...props} frame={frame} fps={fps} />;
+};
+
+/**
+ * Single active word, extra-bold, outlined, spring pop on each word start.
+ * Accepts optional `frame`/`fps` props for non-Remotion hosts (web preview);
+ * falls back to Remotion hooks when they are omitted.
+ */
+export const BoldPop: React.FC<CaptionStyleProps> = (props) => {
+  if (props.frame !== undefined && props.fps !== undefined) {
+    const { frame, fps, ...rest } = props;
+    return <BoldPopFrame {...rest} frame={frame} fps={fps} />;
+  }
+  return <BoldPopRemotion {...props} />;
 };

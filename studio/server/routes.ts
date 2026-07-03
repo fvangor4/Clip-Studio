@@ -118,6 +118,38 @@ export function registerRoutes(
 
   app.get("/api/clips", async () => db.listClips().map(serializeClip));
 
+  app.get("/api/clips/:id", async (req, reply) => {
+    const params = idParamsSchema.safeParse(req.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid id" });
+    const clip = db.getClip(params.data.id);
+    if (!clip) return reply.code(404).send({ error: "clip not found" });
+    return serializeClip(clip);
+  });
+
+  const presetParamsSchema = z.object({
+    name: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
+  });
+
+  app.get("/api/presets/:name", async (req, reply) => {
+    const params = presetParamsSchema.safeParse(req.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid name" });
+    const json = db.getPreset(params.data.name);
+    if (json === undefined) {
+      return reply.code(404).send({ error: "preset not found" });
+    }
+    return { name: params.data.name, value: safeParseJson(json) };
+  });
+
+  app.put("/api/presets/:name", async (req, reply) => {
+    const params = presetParamsSchema.safeParse(req.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid name" });
+    if (req.body === undefined || req.body === null) {
+      return reply.code(400).send({ error: "missing body" });
+    }
+    db.setPreset(params.data.name, JSON.stringify(req.body));
+    return { name: params.data.name, value: req.body };
+  });
+
   app.post("/api/scan", async () => scanRecordings(db, recordingsDir()));
 
   app.post("/api/clips/:id/transcribe", async (req, reply) => {
