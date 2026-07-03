@@ -53,6 +53,22 @@ describe("buildStackFilter", () => {
     expect(f.endsWith("[out]")).toBe(true);
     expect(f).toContain("vstack=inputs=2[out]");
   });
+
+  test("throws on non-positive crop dimensions", () => {
+    const game = { x: 0, y: 0, w: 608, h: 1080 };
+    expect(() =>
+      buildStackFilter({
+        webcamCrop: { x: 0, y: 0, w: 0, h: 640 },
+        gameplayCrop: game,
+      }),
+    ).toThrow(/webcamCrop/);
+    expect(() =>
+      buildStackFilter({
+        webcamCrop: { x: 0, y: 0, w: 1080, h: 640 },
+        gameplayCrop: { x: 0, y: 0, w: 608, h: -1 },
+      }),
+    ).toThrow(/gameplayCrop/);
+  });
 });
 
 describe("buildCompositeArgs", () => {
@@ -69,7 +85,7 @@ describe("buildCompositeArgs", () => {
       "-map",
       "[out]",
       "-map",
-      "0:a?",
+      "0:a:0?",
       "-c:v",
       "h264_nvenc",
       "-preset",

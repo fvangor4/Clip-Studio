@@ -31,6 +31,16 @@ export function buildStackFilter({
   webcamCrop,
   gameplayCrop,
 }: StackCrops): string {
+  for (const [name, rect] of [
+    ["webcamCrop", webcamCrop],
+    ["gameplayCrop", gameplayCrop],
+  ] as const) {
+    if (rect.w <= 0 || rect.h <= 0) {
+      throw new Error(
+        `${name} must have positive w/h, got ${rect.w}x${rect.h}`,
+      );
+    }
+  }
   let topH = Math.round((OUT_W * webcamCrop.h) / webcamCrop.w);
   topH = Math.min(TOP_MAX, Math.max(TOP_MIN, topH));
   if (topH % 2 !== 0) topH += 1;
@@ -63,7 +73,8 @@ export function buildCompositeArgs(
     "-map",
     "[out]",
     "-map",
-    "0:a?",
+    // OBS Track 1 is the full mix; Shorts need exactly one audio stream.
+    "0:a:0?",
     "-c:v",
     encoder,
     ...quality,
