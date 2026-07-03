@@ -61,6 +61,13 @@ Extras:
 - Clips flagged **no speech** can be re-run with "Transcribe anyway".
 - A banner warns if transcription is falling back to CPU or the whisper service is down.
 
+### Default profiles
+
+Tune one clip on the review screen (crops, style, colors, caption position), then click
+**Save as default for &lt;layout&gt; clips**. All future transcriptions of that layout
+(dual / single / other) start from those settings instead of the built-in defaults.
+Overwrite the profile by re-saving from another clip.
+
 ## Adding a caption style
 
 1. Create `studio/remotion/styles/MyStyle.tsx` — a React component receiving

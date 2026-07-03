@@ -86,6 +86,59 @@ interface CropRect {
   h: number;
 }
 
+function isCropRect(value: unknown): value is CropRect {
+  if (typeof value !== "object" || value === null) return false;
+  const r = value as Record<string, unknown>;
+  return (
+    typeof r.x === "number" &&
+    typeof r.y === "number" &&
+    typeof r.w === "number" &&
+    typeof r.h === "number"
+  );
+}
+
+const OUT_W = 1080;
+const OUT_H = 1920;
+
+/**
+ * Full-height gameplay crop whose aspect matches the bottom pane left after
+ * the webcam pane (so scaling to fill it does not stretch), centered inside
+ * a 1920-wide monitor starting at `monitorX`.
+ */
+function fittedGameplayCrop(webcamCrop: CropRect, monitorX: number): CropRect {
+  const bottomH = OUT_H - topPaneHeight(webcamCrop);
+  let w = Math.round((OUT_W * 1080) / bottomH);
+  if (w % 2 !== 0) w -= 1;
+  return { x: monitorX + Math.round((1920 - w) / 2), y: 0, w, h: 1080 };
+}
+
+/**
+ * A saved layout profile ("make all my clips look like this one"): the full
+ * settings object stored as preset profile:<layout>. Returns undefined when
+ * missing or malformed (must parse to an object with a valid gameplayCrop).
+ */
+function layoutProfile(
+  db: Db,
+  layout: string,
+): Record<string, unknown> | undefined {
+  const raw = db.getPreset(`profile:${layout}`);
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      isCropRect((parsed as Record<string, unknown>).gameplayCrop)
+    ) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // malformed profile: fall through to built-in defaults
+  }
+  return undefined;
+}
+
 export function defaultSettings(db: Db, clip: Clip): Record<string, unknown> {
   const settings: Record<string, unknown> = {
     styleId: "karaokeHighlight",
@@ -96,22 +149,24 @@ export function defaultSettings(db: Db, clip: Clip): Record<string, unknown> {
   if (layout === "dual") {
     const webcamCrop = { x: 420, y: 0, w: 1080, h: 640 } satisfies CropRect;
     settings.webcamCrop = webcamCrop;
-    settings.gameplayCrop = { x: 2526, y: 0, w: 608, h: 1080 } satisfies CropRect;
+    // Gameplay comes from the right monitor of the 3840x1080 canvas.
+    settings.gameplayCrop = fittedGameplayCrop(webcamCrop, 1920);
     // Default caption sits at the webcam/gameplay seam: the top pane height
     // for the default webcam crop, nudged up ~40px so the text overlaps it.
     settings.captionY = topPaneHeight(webcamCrop) - 40;
   } else if (layout === "single") {
-    settings.gameplayCrop = { x: 656, y: 0, w: 608, h: 1080 } satisfies CropRect;
     let webcamCrop: CropRect = { x: 0, y: 0, w: 480, h: 270 };
     const webcamRegion = db.getPreset("webcamRegion");
     if (webcamRegion) {
       try {
-        webcamCrop = JSON.parse(webcamRegion) as CropRect;
+        const parsed = JSON.parse(webcamRegion) as unknown;
+        if (isCropRect(parsed)) webcamCrop = parsed;
       } catch {
         // malformed preset: keep the default rect
       }
     }
     settings.webcamCrop = webcamCrop;
+    settings.gameplayCrop = fittedGameplayCrop(webcamCrop, 0);
   } else {
     // Unrecognized resolution: single full-height centered 9:16 gameplay
     // crop, no webcam stack. webcamCrop null signals single-pane compositing.
@@ -127,6 +182,8 @@ export function defaultSettings(db: Db, clip: Clip): Record<string, unknown> {
     } satisfies CropRect;
     settings.webcamCrop = null;
   }
+  const profile = layoutProfile(db, layout);
+  if (profile) return { ...settings, ...profile };
   return settings;
 }
 

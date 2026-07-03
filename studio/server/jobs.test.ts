@@ -127,9 +127,78 @@ describe("transcribeClip", () => {
     const settings = JSON.parse(db.getClip(1)!.settings_json!);
     expect(settings.styleId).toBe("karaokeHighlight");
     expect(settings.webcamCrop).toEqual({ x: 420, y: 0, w: 1080, h: 640 });
+    // dual: gameplay crop aspect matches the 1080x1280 bottom pane
+    // (1080*1080/1280 = 911 → 910 even), centered in the right monitor.
+    expect(settings.gameplayCrop).toEqual({ x: 2425, y: 0, w: 910, h: 1080 });
     // dual: caption sits at the webcam/gameplay seam. Default webcam crop
     // scales to a 640px top pane; minus 40 so text overlaps the seam.
     expect(settings.captionY).toBe(600);
+    db.close();
+  });
+
+  it("gives single-layout clips a gameplay crop matching the bottom pane aspect", async () => {
+    const db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4", width: 1920, height: 1080 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response(JSON.stringify({ words: [] }), { status: 200 }),
+      ),
+    );
+
+    await transcribeClip(db, 1);
+
+    const settings = JSON.parse(db.getClip(1)!.settings_json!);
+    // webcam 480x270 → top pane 608, bottom pane 1312 →
+    // w = 1080*1080/1312 = 889 → 888 even, centered: (1920-888)/2 = 516.
+    expect(settings.webcamCrop).toEqual({ x: 0, y: 0, w: 480, h: 270 });
+    expect(settings.gameplayCrop).toEqual({ x: 516, y: 0, w: 888, h: 1080 });
+    db.close();
+  });
+
+  it("applies a saved layout profile to new transcriptions", async () => {
+    const db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4", width: 3840, height: 1080 });
+    const profile = {
+      styleId: "boldPop",
+      mode: "word",
+      captionY: 800,
+      highlightColor: "#ff00ff",
+      webcamCrop: { x: 100, y: 0, w: 1000, h: 700 },
+      gameplayCrop: { x: 2000, y: 0, w: 900, h: 1080 },
+    };
+    db.setPreset("profile:dual", JSON.stringify(profile));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response(JSON.stringify({ words: [] }), { status: 200 }),
+      ),
+    );
+
+    await transcribeClip(db, 1);
+
+    const settings = JSON.parse(db.getClip(1)!.settings_json!);
+    expect(settings).toMatchObject(profile);
+    db.close();
+  });
+
+  it("ignores a malformed layout profile and uses built-in defaults", async () => {
+    const db = createDb(":memory:");
+    db.upsertClip({ path: "/media/recordings/a.mp4", width: 3840, height: 1080 });
+    // missing/invalid gameplayCrop → profile must be ignored
+    db.setPreset("profile:dual", JSON.stringify({ gameplayCrop: { x: 1 } }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response(JSON.stringify({ words: [] }), { status: 200 }),
+      ),
+    );
+
+    await transcribeClip(db, 1);
+
+    const settings = JSON.parse(db.getClip(1)!.settings_json!);
+    expect(settings.styleId).toBe("karaokeHighlight");
+    expect(settings.gameplayCrop).toEqual({ x: 2425, y: 0, w: 910, h: 1080 });
     db.close();
   });
 
@@ -149,7 +218,7 @@ describe("transcribeClip", () => {
     const clip = db.getClip(1)!;
     expect(clip.status).toBe("no_speech");
     const settings = JSON.parse(clip.settings_json!);
-    expect(settings.gameplayCrop).toEqual({ x: 2526, y: 0, w: 608, h: 1080 });
+    expect(settings.gameplayCrop).toEqual({ x: 2425, y: 0, w: 910, h: 1080 });
     db.close();
   });
 

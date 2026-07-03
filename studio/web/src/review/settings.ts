@@ -1,5 +1,19 @@
 import type { CaptionMode } from "../../../shared/captions";
-import type { CropRect } from "./previewMath";
+import { OUT_H, OUT_W, topPaneHeight, type CropRect } from "./previewMath";
+
+export type Layout = "dual" | "single" | "other";
+
+/** Classify a clip by resolution, mirroring server/scan.ts detectLayout. */
+export function detectLayout(
+  width: number | null,
+  height: number | null,
+): Layout {
+  const w = width ?? 0;
+  const h = height ?? 0;
+  if (h > 0 && w === Math.round((h * 32) / 9)) return "dual";
+  if (w === 1920 && h === 1080) return "single";
+  return "other";
+}
 
 export interface ClipSettings {
   styleId: string;
@@ -30,23 +44,32 @@ function asCrop(value: unknown): CropRect | undefined {
  * defaultSettings (dual = 3840x1080 halves, single = 1920x1080 overlay,
  * anything else = centered full-height 9:16, no webcam stack).
  */
+/**
+ * Full-height gameplay crop whose aspect matches the bottom pane left after
+ * the webcam pane (so scaling to fill it does not stretch), centered inside
+ * a 1920-wide monitor starting at `monitorX`. Mirrors server/jobs.ts.
+ */
+function fittedGameplayCrop(webcamCrop: CropRect, monitorX: number): CropRect {
+  const bottomH = OUT_H - topPaneHeight(webcamCrop);
+  let cw = Math.round((OUT_W * 1080) / bottomH);
+  if (cw % 2 !== 0) cw -= 1;
+  return { x: monitorX + Math.round((1920 - cw) / 2), y: 0, w: cw, h: 1080 };
+}
+
 export function defaultCrops(
   width: number | null,
   height: number | null,
 ): Pick<ClipSettings, "webcamCrop" | "gameplayCrop"> {
   const w = width ?? 0;
   const h = height ?? 0;
-  if (h > 0 && w === Math.round((h * 32) / 9)) {
-    return {
-      webcamCrop: { x: 420, y: 0, w: 1080, h: 640 },
-      gameplayCrop: { x: 2526, y: 0, w: 608, h: 1080 },
-    };
+  const layout = detectLayout(w, h);
+  if (layout === "dual") {
+    const webcamCrop = { x: 420, y: 0, w: 1080, h: 640 };
+    return { webcamCrop, gameplayCrop: fittedGameplayCrop(webcamCrop, 1920) };
   }
-  if (w === 1920 && h === 1080) {
-    return {
-      webcamCrop: { x: 0, y: 0, w: 480, h: 270 },
-      gameplayCrop: { x: 656, y: 0, w: 608, h: 1080 },
-    };
+  if (layout === "single") {
+    const webcamCrop = { x: 0, y: 0, w: 480, h: 270 };
+    return { webcamCrop, gameplayCrop: fittedGameplayCrop(webcamCrop, 0) };
   }
   const srcW = w || 1920;
   const srcH = h || 1080;

@@ -133,7 +133,7 @@ export function registerRoutes(
   });
 
   const presetParamsSchema = z.object({
-    name: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
+    name: z.string().regex(/^[a-zA-Z0-9_:-]{1,64}$/),
   });
 
   app.get("/api/presets/:name", async (req, reply) => {

@@ -3,7 +3,11 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Clip, type TranscriptWord } from "../api";
 import { CropControl } from "../review/CropControl";
 import { PreviewPlayer } from "../review/PreviewPlayer";
-import { normalizeSettings, type ClipSettings } from "../review/settings";
+import {
+  detectLayout,
+  normalizeSettings,
+  type ClipSettings,
+} from "../review/settings";
 import { StylePicker } from "../review/StylePicker";
 import { TranscriptEditor } from "../review/TranscriptEditor";
 
@@ -20,6 +24,7 @@ export function ReviewScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [presetSaved, setPresetSaved] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +33,7 @@ export function ReviewScreen() {
     setDirty(false);
     setError(null);
     setPresetSaved(false);
+    setProfileSaved(false);
     Promise.all([api.getClip(clipId), api.listClips()])
       .then(([c, list]) => {
         if (cancelled) return;
@@ -109,13 +115,27 @@ export function ReviewScreen() {
   const src = api.clipFileUrl(clip.id);
   const sourceW = clip.width ?? 1920;
   const sourceH = clip.height ?? 1080;
-  const singleLayout = sourceW === 1920 && sourceH === 1080;
+  const layout = detectLayout(clip.width, clip.height);
+  const singleLayout = layout === "single";
 
   const savePreset = async () => {
     if (!settings.webcamCrop) return;
     try {
       await api.putPreset("webcamRegion", settings.webcamCrop);
       setPresetSaved(true);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const saveProfile = async () => {
+    try {
+      await api.putPreset(
+        `profile:${layout}`,
+        settings as unknown as Record<string, unknown>,
+      );
+      setProfileSaved(true);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -140,6 +160,14 @@ export function ReviewScreen() {
         </button>
         <button disabled={saving} onClick={() => void saveAndNext()}>
           Save &amp; Next
+        </button>
+        <button
+          onClick={() => void saveProfile()}
+          title={`New ${layout} clips will start from these settings`}
+        >
+          {profileSaved
+            ? "Saved ✓"
+            : `Save as default for ${layout} clips`}
         </button>
         {error && <span className="error-text">{error}</span>}
       </header>
