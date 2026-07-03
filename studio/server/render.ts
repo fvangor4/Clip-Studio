@@ -9,7 +9,7 @@ import {
   type CropRect,
 } from "./composite.js";
 import type { Db } from "./db.js";
-import type { TranscriptWord } from "./jobs.js";
+import { defaultSettings, type TranscriptWord } from "./jobs.js";
 
 /** Recursively sort object keys so hashing is insensitive to key order. */
 function canonicalize(value: unknown): unknown {
@@ -194,7 +194,15 @@ export async function renderClip(
     db.updateClip(clip.id, { status: "rendering", error: null });
     renderProgress.set(clip.id, { progress: 0, stage: "composite" });
 
-    const settings = JSON.parse(clip.settings_json ?? "{}") as ClipSettings;
+    // Merge layout defaults under the stored settings: a save from the UI
+    // while a clip was still transcribing can persist settings without crop
+    // rects, so missing crops fall back to the same defaults transcription
+    // would have written.
+    const stored = JSON.parse(clip.settings_json ?? "{}") as ClipSettings;
+    const settings = {
+      ...(defaultSettings(db, clip) as ClipSettings),
+      ...stored,
+    };
     if (!settings.gameplayCrop) {
       throw new Error("clip settings missing gameplayCrop");
     }

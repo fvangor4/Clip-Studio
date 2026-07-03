@@ -86,7 +86,7 @@ interface CropRect {
   h: number;
 }
 
-function defaultSettings(db: Db, clip: Clip): Record<string, unknown> {
+export function defaultSettings(db: Db, clip: Clip): Record<string, unknown> {
   const settings: Record<string, unknown> = {
     styleId: "karaokeHighlight",
     mode: "highlight",

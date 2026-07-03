@@ -34,7 +34,7 @@ export function ReviewScreen() {
         setClip(c);
         setClips(list);
         setWords(c.transcript ?? []);
-        setSettings(normalizeSettings(c.settings));
+        setSettings(normalizeSettings(c.settings, c));
       })
       .catch((err) => {
         if (!cancelled) {

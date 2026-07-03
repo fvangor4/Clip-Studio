@@ -25,11 +25,51 @@ function asCrop(value: unknown): CropRect | undefined {
   return undefined;
 }
 
-/** Fill in defaults matching server/jobs.ts defaultSettings caption fields. */
+/**
+ * Default crop rects by source resolution, mirroring server/jobs.ts
+ * defaultSettings (dual = 3840x1080 halves, single = 1920x1080 overlay,
+ * anything else = centered full-height 9:16, no webcam stack).
+ */
+export function defaultCrops(
+  width: number | null,
+  height: number | null,
+): Pick<ClipSettings, "webcamCrop" | "gameplayCrop"> {
+  const w = width ?? 0;
+  const h = height ?? 0;
+  if (h > 0 && w === Math.round((h * 32) / 9)) {
+    return {
+      webcamCrop: { x: 420, y: 0, w: 1080, h: 640 },
+      gameplayCrop: { x: 2526, y: 0, w: 608, h: 1080 },
+    };
+  }
+  if (w === 1920 && h === 1080) {
+    return {
+      webcamCrop: { x: 0, y: 0, w: 480, h: 270 },
+      gameplayCrop: { x: 656, y: 0, w: 608, h: 1080 },
+    };
+  }
+  const srcW = w || 1920;
+  const srcH = h || 1080;
+  let cw = Math.min(srcW, Math.round((srcH * 9) / 16));
+  if (cw % 2 !== 0) cw -= 1;
+  return {
+    gameplayCrop: { x: Math.max(0, Math.round((srcW - cw) / 2)), y: 0, w: cw, h: srcH },
+  };
+}
+
+/**
+ * Fill in defaults matching server/jobs.ts defaultSettings. When the stored
+ * settings lack crop rects (e.g. saved while the clip was still transcribing),
+ * synthesize them from the clip resolution so the crop controls always work.
+ */
 export function normalizeSettings(
   raw: Record<string, unknown> | null,
+  clip?: { width: number | null; height: number | null },
 ): ClipSettings {
   const r = raw ?? {};
+  const fallback = clip ? defaultCrops(clip.width, clip.height) : {};
+  const webcamCrop = asCrop(r.webcamCrop) ?? fallback.webcamCrop;
+  const gameplayCrop = asCrop(r.gameplayCrop) ?? fallback.gameplayCrop;
   return {
     styleId: typeof r.styleId === "string" ? r.styleId : "karaokeHighlight",
     mode: r.mode === "word" ? "word" : "highlight",
@@ -38,7 +78,7 @@ export function normalizeSettings(
       highlightColor: r.highlightColor,
     }),
     ...(typeof r.fontSize === "number" && { fontSize: r.fontSize }),
-    ...(asCrop(r.webcamCrop) && { webcamCrop: asCrop(r.webcamCrop) }),
-    ...(asCrop(r.gameplayCrop) && { gameplayCrop: asCrop(r.gameplayCrop) }),
+    ...(webcamCrop && { webcamCrop }),
+    ...(gameplayCrop && { gameplayCrop }),
   };
 }
