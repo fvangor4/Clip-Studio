@@ -6,3 +6,5 @@ dist/
 .venv/
 /data/
 studio/data/
+
+.env

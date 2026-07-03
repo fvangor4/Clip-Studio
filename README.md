@@ -34,8 +34,8 @@ color and size adjustable per clip.
 
 ## Setup
 
-1. Edit `docker-compose.yml` if your recordings live somewhere other than
-   `C:/Users/Thuun/Dropbox/Content Creation Folder/OBS recordings` (two volume entries).
+1. Copy `.env.example` to `.env` and set `RECORDINGS_PATH` to your OBS recordings
+   folder (forward slashes, even on Windows).
 2. Start it:
 
    ```powershell

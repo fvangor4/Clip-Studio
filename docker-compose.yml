@@ -4,7 +4,7 @@ services:
     ports: ["8090:8090"]
     volumes:
       - whisper-models:/models
-      - "C:/Users/Thuun/Dropbox/Content Creation Folder/OBS recordings:/media/recordings:ro"
+      - "${RECORDINGS_PATH:?Set RECORDINGS_PATH in .env (see .env.example)}:/media/recordings:ro"
     deploy:
       resources:
         reservations:
@@ -22,8 +22,8 @@ services:
       - DATA_DIR=/data
       - WORK_DIR=/data/work
     volumes:
-      - "C:/Users/Thuun/Dropbox/Content Creation Folder/OBS recordings:/media/recordings:ro"
-      - ./output:/media/output
+      - "${RECORDINGS_PATH:?Set RECORDINGS_PATH in .env (see .env.example)}:/media/recordings:ro"
+      - "${OUTPUT_PATH:-./output}:/media/output"
       - studio-data:/data
     deploy:
       resources:
