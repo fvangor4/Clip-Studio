@@ -1,0 +1,9 @@
+node_modules
+data
+data-smoke
+web/dist
+*.db
+*.db-shm
+*.db-wal
+Dockerfile
+.dockerignore

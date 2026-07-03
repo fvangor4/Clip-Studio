@@ -1,3 +1,5 @@
 fastapi==0.115.12
 uvicorn[standard]==0.34.2
 faster-whisper==1.1.1
+# faster-whisper's model download imports requests but does not declare it
+requests==2.32.3

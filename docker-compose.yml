@@ -17,6 +17,10 @@ services:
     ports: ["3000:3000"]
     environment:
       - WHISPER_API_URL=http://whisper-api:8090
+      - RECORDINGS_DIR=/media/recordings
+      - OUTPUT_DIR=/media/output
+      - DATA_DIR=/data
+      - WORK_DIR=/data/work
     volumes:
       - "C:/Users/Thuun/Dropbox/Content Creation Folder/OBS recordings:/media/recordings:ro"
       - ./output:/media/output
@@ -27,7 +31,7 @@ services:
           devices:
             - driver: nvidia
               count: all
-              capabilities: [gpu]
+              capabilities: [gpu, video]
 volumes:
   whisper-models:
   studio-data:
