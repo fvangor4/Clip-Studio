@@ -1,0 +1,37 @@
+services:
+  whisper-api:
+    build: ./whisper-api
+    ports: ["8090:8090"]
+    volumes:
+      - whisper-models:/models
+      - "${RECORDINGS_PATH:?Set RECORDINGS_PATH in .env (see .env.example)}:/media/recordings:ro"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  studio:
+    build: ./studio
+    ports: ["3000:3000"]
+    environment:
+      - WHISPER_API_URL=http://whisper-api:8090
+      - RECORDINGS_DIR=/media/recordings
+      - OUTPUT_DIR=/media/output
+      - DATA_DIR=/data
+      - WORK_DIR=/data/work
+    volumes:
+      - "${RECORDINGS_PATH:?Set RECORDINGS_PATH in .env (see .env.example)}:/media/recordings:ro"
+      - "${OUTPUT_PATH:-./output}:/media/output"
+      - studio-data:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, video]
+volumes:
+  whisper-models:
+  studio-data:

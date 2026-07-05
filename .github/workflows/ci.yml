@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+    branches: [main, master, dev]
+
+jobs:
+  studio:
+    name: studio (tests, typecheck, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - run: npm ci
+      - run: npx vitest run
+      - run: npx tsc --noEmit
+      - run: npm run build:web
+
+  whisper-api:
+    name: whisper-api (tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: whisper-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest
+      - run: python -m pytest tests -q
+
+  docker-build:
+    name: docker images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build studio image
+        run: docker build ./studio
+      - name: Build whisper-api image
+        run: docker build ./whisper-api
