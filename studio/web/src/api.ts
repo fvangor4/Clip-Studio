@@ -1,0 +1,100 @@
+export type ClipStatus =
+  | "new"
+  | "transcribing"
+  | "review"
+  | "no_speech"
+  | "ready"
+  | "rendering"
+  | "done"
+  | "error";
+
+export interface TranscriptWord {
+  text: string;
+  start: number;
+  end: number;
+  confidence: number;
+}
+
+export interface Clip {
+  id: number;
+  path: string;
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+  /** File modification time, unix ms; null for rows scanned before mtime tracking. */
+  mtime: number | null;
+  status: ClipStatus;
+  error: string | null;
+  transcript: TranscriptWord[] | null;
+  settings: Record<string, unknown> | null;
+}
+
+export interface Jobs {
+  transcribe: { queued: number };
+  render: {
+    queued: number;
+    progress: Record<string, { progress: number; stage: string }>;
+  };
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, init);
+  if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+  return (await res.json()) as T;
+}
+
+function post<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: "POST",
+    ...(body !== undefined && {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  });
+}
+
+export interface ClipPatch {
+  transcript?: TranscriptWord[];
+  settings?: Record<string, unknown>;
+  status?: ClipStatus;
+}
+
+export interface WhisperHealth {
+  status: string;
+  device: string;
+}
+
+export const api = {
+  listClips: () => request<Clip[]>("/api/clips"),
+  getClip: (id: number) => request<Clip>(`/api/clips/${id}`),
+  patchClip: (id: number, patch: ClipPatch) =>
+    request<Clip>(`/api/clips/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
+  clipFileUrl: (id: number) => `/api/clips/${id}/file`,
+  putPreset: (name: string, value: unknown) =>
+    request<{ name: string; value: unknown }>(`/api/presets/${name}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(value),
+    }),
+  /** Returns null when the preset does not exist yet. */
+  getPreset: async (name: string): Promise<unknown> => {
+    const res = await fetch(`/api/presets/${name}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`/api/presets/${name}: HTTP ${res.status}`);
+    const data = (await res.json()) as { value: unknown };
+    return data.value;
+  },
+  whisperHealth: () => request<WhisperHealth>("/api/whisper-health"),
+  transcribeClip: (id: number) =>
+    post<{ queued: number }>(`/api/clips/${id}/transcribe`),
+  getJobs: () => request<Jobs>("/api/jobs"),
+  scan: () => post<unknown>("/api/scan"),
+  transcribeBatch: (ids: number[]) =>
+    post<{ queued: number }>("/api/transcribe-batch", { ids }),
+  renderBatch: (ids: number[]) =>
+    post<{ queued: number }>("/api/render-batch", { ids }),
+};
